@@ -68,20 +68,31 @@ class FbFeedIter(object):
             feed = graph.get_connections(
                 id='me',
                 connection_name='posts',
-                fields='status_type,id,created_time,message,link')
+                fields='status_type,id,created_time,message,link',
+                since=self.from_date,
+                until=self.until_date)
 
-        self._next_page = feed.get('paging').get('next')
+        self._next_page = feed.get('paging', {}).get('next')
         return iter(feed['data'])
 
 
 if __name__ == '__main__':
     arguments = docopt(__doc__)
 
-    from_date = (
-        dtparser.parse(arguments['--from']).replace(tzinfo=timezone.utc))
-    until_date = (
-        dtparser.parse(arguments['--until']).replace(tzinfo=timezone.utc))
+    # Parse all the arguments
+    from_date = arguments['--from']
+    if from_date is not None:
+        from_date = dtparser.parse(from_date).replace(tzinfo=timezone.utc)
+    else:
+        from_date = datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc)
+
+    until_date = arguments['--until']
+    if until_date is not None:
+        until_date = (
+            dtparser.parse(until_date).replace(tzinfo=timezone.utc))
     es_index = arguments['<es_index>']
+
+    # Gain the access token and process
     access_token = getpass.getpass('Access token:')
     post_iter = FbFeedIter(access_token, from_date, until_date)
 
