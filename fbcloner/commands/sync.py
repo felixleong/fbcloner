@@ -1,5 +1,6 @@
 from datetime import datetime
 import facebook
+import json
 import logging
 import requests
 
@@ -7,7 +8,6 @@ _logger = logging.getLogger('fbcloner.sync')
 
 
 class FbFeedIter(object):
-    FB_API_VERSION = '2.7'
     ISO_DATE_FORMAT = '%Y-%m-%dT%H:%M:%S%z'
 
     def __init__(self, access_token, fbid='me', since=None, until=None):
@@ -23,7 +23,8 @@ class FbFeedIter(object):
         self.until = until
         self._next_page = None
         self._date = None
-        self._post_iter = self._get_next_post_set()
+
+        self._initialize_graph()
 
     def __iter__(self):
         return self
@@ -38,29 +39,29 @@ class FbFeedIter(object):
                 post['created_time'], self.ISO_DATE_FORMAT)
             return post
         except StopIteration:
-            if self._date >= self.since:
-                self._post_iter = self._get_next_post_set()
+            if self._date >= self.since and self._next_page:
+                feed = requests.get(self._next_page).json()
+                self._generate_new_iter(feed)
                 return self.next()
             else:
                 raise
 
-    def _get_next_post_set(self):
-        if self._next_page:
-            feed = requests.get(self._next_page).json()
-        else:
-            graph = facebook.GraphAPI(
-                access_token=self.access_token, version=self.FB_API_VERSION)
-            feed = graph.get_connections(
-                id=self.fbid,
-                connection_name='feed',
-                fields=(
-                    'status_type,id,created_time,message,link,full_picture,'
-                    'object_id'),
-                since=self.since,
-                until=self.until)
+    def _initialize_graph(self):
+        graph = facebook.GraphAPI(access_token=self.access_token)
+        feed = graph.get_connections(
+            id=self.fbid,
+            connection_name='feed',
+            fields=(
+                'status_type,id,created_time,message,link,full_picture,'
+                'object_id'),
+            since=self.since,
+            until=self.until)
 
+        self._generate_new_iter(feed)
+
+    def _generate_new_iter(self, feed):
         self._next_page = feed.get('paging', {}).get('next')
-        return iter(feed['data'])
+        self._post_iter = iter(feed['data'])
 
 
 def sync(conn_str, fbid, since, until):
@@ -76,4 +77,15 @@ def sync(conn_str, fbid, since, until):
     # TODO We would need extra code to check access token expiry
 
     post_iter = FbFeedIter(access_token, fbid, since, until)
-    _logger.debug('Single post: {}'.format(post_iter.next()))
+    counter = 1
+    for post in post_iter:
+        filename = 'feeddump/{}-{}.json'.format(
+            post['created_time'], post['id'])
+
+        with open(filename, 'w') as pfhdl:
+            json.dump(post, pfhdl)
+
+        if counter % 100 == 0:
+            _logger.info('Processed {} posts - {}'.format(
+                counter, post['created_time']))
+        counter = counter + 1

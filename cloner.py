@@ -12,7 +12,6 @@ Options:
     --fbid=<fbid>   The Facebook ID to clone the data from [default: me].
     --debug         Show debug information
 """
-from datetime import datetime, timezone
 from docopt import docopt
 from fbcloner.commands import setup, sync
 from fbcloner.validators import validate_datetime
@@ -37,7 +36,7 @@ if __name__ == '__main__':
     # Parse the arguments and run commands
     arguments = docopt(__doc__, version='Facebook Feed Cloner 0.1')
     if arguments['--since'] is None:
-        arguments['--since'] = datetime(1, 1, 1, tzinfo=timezone.utc)
+        arguments['--since'] = '1900-1-1T00:00Z'
 
     # Set up our logger
     _logger = logging.getLogger('fbcloner')
